@@ -17,7 +17,7 @@ st.set_page_config(
 )
 
 # ----------------------------
-# Theme Toggle (Light/Dark)
+# Theme Toggle
 # ----------------------------
 if "theme_mode" not in st.session_state:
     st.session_state.theme_mode = "Dark"
@@ -35,7 +35,7 @@ with st.sidebar:
 theme = st.session_state.theme_mode
 
 # ----------------------------
-# Theme Tokens (SaaS-ready)
+# Theme Tokens
 # ----------------------------
 if theme == "Dark":
     BG = "#0b1220"
@@ -43,30 +43,22 @@ if theme == "Dark":
     BORDER = "rgba(255,255,255,0.10)"
     TEXT = "#e5e7eb"
     MUTED = "rgba(229,231,235,0.70)"
-    ACCENT = "#60a5fa"
-    ACCENT2 = "#a78bfa"
     SUCCESS_BG = "rgba(34,197,94,0.15)"
     ERROR_BG = "rgba(239,68,68,0.15)"
 else:
     BG = "#f7f8fb"
-    CARD = "rgba(255,255,255,1)"
-    BORDER = "rgba(15,23,42,0.10)"
+    CARD = "#ffffff"
+    BORDER = "rgba(15,23,42,0.12)"
     TEXT = "#0f172a"
     MUTED = "rgba(15,23,42,0.65)"
-    ACCENT = "#2563eb"
-    ACCENT2 = "#7c3aed"
     SUCCESS_BG = "rgba(34,197,94,0.12)"
     ERROR_BG = "rgba(239,68,68,0.10)"
 
 # ----------------------------
-# CSS (Modern SaaS)
+# CSS (SaaS)
 # ----------------------------
 st.markdown(f"""
 <style>
-/* Global */
-html, body, [class*="css"] {{
-    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
-}}
 .stApp {{
     background: {BG};
     color: {TEXT};
@@ -75,16 +67,9 @@ html, body, [class*="css"] {{
     padding-top: 1.6rem;
     padding-bottom: 2rem;
 }}
-
-/* Sidebar */
 [data-testid="stSidebar"] {{
     border-right: 1px solid {BORDER};
 }}
-[data-testid="stSidebar"] .block-container {{
-    padding-top: 1.2rem;
-}}
-
-/* Cards */
 .card {{
     background: {CARD};
     border: 1px solid {BORDER};
@@ -97,70 +82,15 @@ html, body, [class*="css"] {{
     border-radius: 18px;
     padding: 14px;
 }}
+.muted {{
+    color: {MUTED};
+}}
 hr {{
     border: none;
     height: 1px;
     background: {BORDER};
     margin: 14px 0;
 }}
-
-/* Title + subtitle */
-.h-title {{
-    font-size: 2.2rem;
-    font-weight: 800;
-    line-height: 1.15;
-    margin-bottom: 0.3rem;
-}}
-.h-sub {{
-    color: {MUTED};
-    font-size: 1rem;
-}}
-
-/* Badge / pill */
-.pill {{
-    display: inline-flex;
-    gap: 8px;
-    align-items: center;
-    padding: 6px 12px;
-    border-radius: 999px;
-    border: 1px solid {BORDER};
-    background: {CARD};
-    font-size: 0.9rem;
-    color: {TEXT};
-}}
-.pill-dot {{
-    width: 9px;
-    height: 9px;
-    border-radius: 999px;
-    background: {ACCENT};
-}}
-
-/* Buttons */
-.stButton > button {{
-    border-radius: 14px !important;
-    padding: 0.7rem 1rem !important;
-    border: 1px solid {BORDER} !important;
-}}
-.stButton > button:hover {{
-    border-color: {ACCENT} !important;
-}}
-
-/* Metrics */
-div[data-testid="stMetric"] {{
-    background: {CARD};
-    border: 1px solid {BORDER};
-    border-radius: 16px;
-    padding: 14px;
-}}
-
-/* Dataframe */
-[data-testid="stDataFrame"] {{
-    border-radius: 16px;
-    overflow: hidden;
-    border: 1px solid {BORDER};
-}}
-
-/* Success / Error boxes */
 .success-box {{
     background: {SUCCESS_BG};
     border: 1px solid rgba(34,197,94,0.35);
@@ -173,8 +103,16 @@ div[data-testid="stMetric"] {{
     padding: 14px;
     border-radius: 16px;
 }}
-.muted {{
-    color: {MUTED};
+div[data-testid="stMetric"] {{
+    background: {CARD};
+    border: 1px solid {BORDER};
+    border-radius: 16px;
+    padding: 14px;
+}}
+.stButton > button {{
+    border-radius: 14px !important;
+    padding: 0.7rem 1rem !important;
+    border: 1px solid {BORDER} !important;
 }}
 </style>
 """, unsafe_allow_html=True)
@@ -198,8 +136,28 @@ for col in df.columns:
     else:
         df[col] = df[col].fillna(df[col].median())
 
-X = df.drop(columns=["Loan_Approved"])
-y = df["Loan_Approved"].fillna(df["Loan_Approved"].mode()[0])
+# ----------------------------
+# Target Cleaning (IMPORTANT FIX)
+# ----------------------------
+# Convert Loan_Approved into numeric (0/1) safely
+def normalize_target(series):
+    s = series.astype(str).str.strip().str.lower()
+
+    mapping = {
+        "1": 1, "yes": 1, "y": 1, "approved": 1, "true": 1,
+        "0": 0, "no": 0, "n": 0, "rejected": 0, "false": 0
+    }
+
+    return s.map(mapping)
+
+df["Loan_Approved_num"] = normalize_target(df["Loan_Approved"])
+
+# If still NaN after mapping, fallback:
+df["Loan_Approved_num"] = df["Loan_Approved_num"].fillna(0).astype(int)
+
+# Features and Target
+X = df.drop(columns=["Loan_Approved", "Loan_Approved_num"])
+y = df["Loan_Approved_num"]
 
 cat_cols = X.select_dtypes(include=["object"]).columns.tolist()
 num_cols = X.select_dtypes(exclude=["object"]).columns.tolist()
@@ -225,35 +183,29 @@ pipeline.fit(X_train, y_train)
 acc = accuracy_score(y_test, pipeline.predict(X_test))
 
 # ----------------------------
-# Header (Top SaaS style)
+# Header
 # ----------------------------
 topL, topR = st.columns([3, 2], vertical_alignment="center")
 
 with topL:
-    st.markdown(f"""
-    <div class="h-title">💳 CreditWise Loan Approval</div>
-    <div class="h-sub">SaaS-ready loan approval prediction dashboard • {theme} mode</div>
-    """, unsafe_allow_html=True)
+    st.markdown("## 💳 CreditWise Loan Approval")
+    st.markdown(f"<div class='muted'>SaaS-ready prediction dashboard • {theme} mode</div>", unsafe_allow_html=True)
 
 with topR:
-    st.markdown('<div class="card-tight">', unsafe_allow_html=True)
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Accuracy", f"{acc:.2f}")
-    c2.metric("Rows", f"{len(df):,}")
-    c3.metric("Features", f"{X.shape[1]}")
+    st.markdown("<div class='card-tight'>", unsafe_allow_html=True)
+    a, b, c = st.columns(3)
+    a.metric("Accuracy", f"{acc:.2f}")
+    b.metric("Rows", f"{len(df):,}")
+    c.metric("Features", f"{X.shape[1]}")
     st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown("---")
 
 # ----------------------------
-# Sidebar Form (clean + grouped)
+# Sidebar Form
 # ----------------------------
 st.sidebar.markdown("## 🧾 Applicant Details")
-st.sidebar.markdown('<div class="muted">Fill details and click Predict.</div>', unsafe_allow_html=True)
-st.sidebar.markdown("")
-
-if "reset_now" not in st.session_state:
-    st.session_state.reset_now = False
+st.sidebar.markdown("<div class='muted'>Fill details and click Predict.</div>", unsafe_allow_html=True)
 
 with st.sidebar.form("loan_form"):
     st.markdown("### Income & Loan")
@@ -285,15 +237,15 @@ with st.sidebar.form("loan_form"):
     Property_Area = st.selectbox("Property Area", sorted(df["Property_Area"].unique()))
     Loan_Purpose = st.selectbox("Loan Purpose", sorted(df["Loan_Purpose"].unique()))
 
-    col_btn1, col_btn2 = st.columns(2)
-    submitted = col_btn1.form_submit_button("🚀 Predict")
-    reset = col_btn2.form_submit_button("♻️ Reset")
+    col1, col2 = st.columns(2)
+    submitted = col1.form_submit_button("🚀 Predict")
+    reset = col2.form_submit_button("♻️ Reset")
 
 if reset:
     st.rerun()
 
 # ----------------------------
-# Tabs (SaaS structure)
+# Tabs
 # ----------------------------
 tab1, tab2, tab3 = st.tabs(["🧠 Prediction", "📈 Insights", "🗂 Dataset"])
 
@@ -305,15 +257,10 @@ with tab1:
 
     with colA:
         st.markdown("### Result")
-        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
 
         if not submitted:
-            st.markdown("""
-            <div class="pill"><span class="pill-dot"></span>
-            Ready to predict — use the sidebar form.</div>
-            """, unsafe_allow_html=True)
-            st.markdown("<hr/>", unsafe_allow_html=True)
-            st.info("👈 Fill the form and click **Predict** to see decision + probability.")
+            st.info("👈 Fill the sidebar form and click **Predict**.")
         else:
             input_data = pd.DataFrame([{
                 "Applicant_Income": Applicant_Income,
@@ -338,45 +285,43 @@ with tab1:
 
             pred = pipeline.predict(input_data)[0]
             proba = pipeline.predict_proba(input_data)[0]
-
-            approve_prob = float(proba[1]) if len(proba) > 1 else 0.0
-            reject_prob = float(proba[0]) if len(proba) > 0 else 0.0
+            approve_prob = float(proba[1])
 
             m1, m2, m3 = st.columns(3)
             m1.metric("Approval Probability", f"{approve_prob*100:.1f}%")
-            m2.metric("Rejection Probability", f"{reject_prob*100:.1f}%")
+            m2.metric("DTI Ratio", f"{DTI_Ratio:.2f}")
             m3.metric("Credit Score", f"{Credit_Score:.0f}")
 
-            st.markdown("<hr/>", unsafe_allow_html=True)
             st.progress(approve_prob)
 
             if pred == 1:
-                st.markdown('<div class="success-box">', unsafe_allow_html=True)
+                st.markdown("<div class='success-box'>", unsafe_allow_html=True)
                 st.markdown("### ✅ Approved")
-                st.markdown("**Next step:** Offer best interest rate options and proceed to verification.")
+                st.markdown("**Next step:** Verification + offer best interest rate plan.")
                 st.markdown("</div>", unsafe_allow_html=True)
             else:
-                st.markdown('<div class="error-box">', unsafe_allow_html=True)
+                st.markdown("<div class='error-box'>", unsafe_allow_html=True)
                 st.markdown("### ❌ Rejected")
-                st.markdown("**Suggestion:** Improve credit score, reduce DTI, or increase collateral.")
+                st.markdown("**Suggestion:** Improve credit score / reduce DTI / increase collateral.")
                 st.markdown("</div>", unsafe_allow_html=True)
 
         st.markdown("</div>", unsafe_allow_html=True)
 
     with colB:
         st.markdown("### Applicant Snapshot")
-        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
 
         snapshot = {
             "Applicant Income": Applicant_Income if submitted else "-",
             "Loan Amount": Loan_Amount if submitted else "-",
-            "Loan Term (months)": Loan_Term if submitted else "-",
+            "Loan Term": Loan_Term if submitted else "-",
             "DTI Ratio": DTI_Ratio if submitted else "-",
             "Savings": Savings if submitted else "-",
             "Collateral": Collateral_Value if submitted else "-",
             "Employment": Employment_Status if submitted else "-",
             "Property Area": Property_Area if submitted else "-",
         }
+
         st.dataframe(
             pd.DataFrame(snapshot.items(), columns=["Field", "Value"]),
             use_container_width=True,
@@ -386,27 +331,22 @@ with tab1:
         st.markdown("</div>", unsafe_allow_html=True)
 
 # ----------------------------
-# Insights Tab
+# Insights Tab (NO CRASH)
 # ----------------------------
 with tab2:
-    st.markdown("### Insights (SaaS Analytics)")
-    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown("### Insights")
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+
+    approved_rate = df["Loan_Approved_num"].mean() * 100
 
     c1, c2, c3 = st.columns(3)
-    c1.metric("Approved %", f"{(df['Loan_Approved'].mean()*100):.1f}%")
+    c1.metric("Approved %", f"{approved_rate:.1f}%")
     c2.metric("Avg Credit Score", f"{df['Credit_Score'].mean():.0f}")
     c3.metric("Avg Loan Amount", f"{df['Loan_Amount'].mean():.0f}")
 
     st.markdown("<hr/>", unsafe_allow_html=True)
-
-    st.markdown("#### 📌 Quick Charts")
-    chart_col1, chart_col2 = st.columns(2)
-
-    with chart_col1:
-        st.bar_chart(df["Loan_Approved"].value_counts())
-
-    with chart_col2:
-        st.line_chart(df[["Credit_Score", "Loan_Amount"]].head(50))
+    st.markdown("#### Loan Approval Distribution")
+    st.bar_chart(df["Loan_Approved_num"].value_counts())
 
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -415,8 +355,8 @@ with tab2:
 # ----------------------------
 with tab3:
     st.markdown("### Dataset Preview")
-    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.dataframe(df.head(50), use_container_width=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-st.caption("© CreditWise • SaaS-ready UI • Streamlit Cloud Deployment")
+st.caption("© CreditWise • SaaS-ready UI • Light/Dark Mode • Streamlit Cloud")
