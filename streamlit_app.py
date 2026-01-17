@@ -211,12 +211,99 @@ st.markdown(
 st.write("")
 
 # Sidebar navigation
-st.sidebar.title("LoanOS")
-page = st.sidebar.radio("Navigate", ["📊 Dashboard", "🔮 Predict", "🗂 Data Explorer"], index=1)
+# ----------------------------
+# SIDEBAR (SaaS-style)
+# ----------------------------
+st.sidebar.markdown(
+    """
+    <div style="padding: 10px 6px 2px 6px;">
+        <div style="font-size: 22px; font-weight: 800;">LoanOS</div>
+        <div style="opacity: 0.7; font-size: 12px; margin-top: 2px;">
+            Loan Approval Intelligence
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 st.sidebar.markdown("---")
+
+# Navigation
+page = st.sidebar.radio(
+    "Navigate",
+    ["📊 Dashboard", "🔮 Predict", "🗂 Data Explorer"],
+    index=1,
+    label_visibility="collapsed"
+)
+
+st.sidebar.markdown("---")
+
+# Mini KPI cards
+total_rows = df.shape[0]
+total_features = df.shape[1] - 1  # excluding target
+
+approval_pct = None
+if TARGET_COL in df.columns:
+    approval_pct = (df[TARGET_COL].astype(str).str.strip().eq("Yes")).mean()
+
+st.sidebar.markdown("### 📌 Quick Stats")
+
+st.sidebar.markdown(
+    f"""
+    <div style="padding: 10px; border-radius: 14px; background: #111827;
+                border: 1px solid rgba(255,255,255,0.08); margin-bottom: 10px;">
+        <div style="font-size: 12px; opacity: 0.75;">Dataset</div>
+        <div style="font-size: 18px; font-weight: 700;">{total_rows} rows</div>
+        <div style="font-size: 12px; opacity: 0.65;">{total_features} input fields</div>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+st.sidebar.markdown(
+    f"""
+    <div style="padding: 10px; border-radius: 14px; background: #111827;
+                border: 1px solid rgba(255,255,255,0.08); margin-bottom: 10px;">
+        <div style="font-size: 12px; opacity: 0.75;">Model Accuracy</div>
+        <div style="font-size: 18px; font-weight: 700;">{acc:.2%}</div>
+        <div style="font-size: 12px; opacity: 0.65;">Test split</div>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+if approval_pct is not None:
+    st.sidebar.markdown(
+        f"""
+        <div style="padding: 10px; border-radius: 14px; background: #111827;
+                    border: 1px solid rgba(255,255,255,0.08); margin-bottom: 10px;">
+            <div style="font-size: 12px; opacity: 0.75;">Approval Rate</div>
+            <div style="font-size: 18px; font-weight: 700;">{approval_pct:.2%}</div>
+            <div style="font-size: 12px; opacity: 0.65;">Share of "Yes"</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+st.sidebar.markdown("---")
+
+# Settings block
+st.sidebar.markdown("### ⚙️ Settings")
 st.sidebar.caption("Model: Logistic Regression")
 st.sidebar.caption("Preprocessing: Impute + OneHot + Scale")
+
+st.sidebar.markdown("---")
+
+# Footer
+st.sidebar.markdown(
+    """
+    <div style="opacity:0.55; font-size:11px; padding-bottom:8px;">
+        LoanOS • v1.0<br/>
+        Built with Streamlit
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 # Dashboard
 if page == "📊 Dashboard":
