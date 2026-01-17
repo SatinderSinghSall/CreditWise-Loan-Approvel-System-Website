@@ -45,6 +45,7 @@ if theme == "Dark":
     MUTED = "rgba(229,231,235,0.70)"
     SUCCESS_BG = "rgba(34,197,94,0.15)"
     ERROR_BG = "rgba(239,68,68,0.15)"
+    ACCENT = "#60a5fa"
 else:
     BG = "#f7f8fb"
     CARD = "#ffffff"
@@ -53,23 +54,35 @@ else:
     MUTED = "rgba(15,23,42,0.65)"
     SUCCESS_BG = "rgba(34,197,94,0.12)"
     ERROR_BG = "rgba(239,68,68,0.10)"
+    ACCENT = "#2563eb"
 
 # ----------------------------
-# CSS (SaaS)
+# CSS (Premium SaaS)
 # ----------------------------
 st.markdown(f"""
 <style>
+/* App background */
 .stApp {{
     background: {BG};
     color: {TEXT};
 }}
+
+/* Layout padding */
 .block-container {{
-    padding-top: 1.6rem;
+    padding-top: 1.4rem;
     padding-bottom: 2rem;
 }}
-[data-testid="stSidebar"] {{
+
+/* Sidebar width + border */
+section[data-testid="stSidebar"] {{
+    width: 340px !important;
     border-right: 1px solid {BORDER};
 }}
+[data-testid="stSidebar"] .block-container {{
+    padding-top: 1.2rem;
+}}
+
+/* Cards */
 .card {{
     background: {CARD};
     border: 1px solid {BORDER};
@@ -82,15 +95,21 @@ st.markdown(f"""
     border-radius: 18px;
     padding: 14px;
 }}
+
+/* Muted text */
 .muted {{
     color: {MUTED};
 }}
+
+/* Divider */
 hr {{
     border: none;
     height: 1px;
     background: {BORDER};
     margin: 14px 0;
 }}
+
+/* Success / Error cards */
 .success-box {{
     background: {SUCCESS_BG};
     border: 1px solid rgba(34,197,94,0.35);
@@ -103,16 +122,35 @@ hr {{
     padding: 14px;
     border-radius: 16px;
 }}
+
+/* Metric cards */
 div[data-testid="stMetric"] {{
     background: {CARD};
     border: 1px solid {BORDER};
     border-radius: 16px;
     padding: 14px;
 }}
+
+/* Buttons */
 .stButton > button {{
     border-radius: 14px !important;
     padding: 0.7rem 1rem !important;
     border: 1px solid {BORDER} !important;
+    font-weight: 600 !important;
+}}
+.stButton > button:hover {{
+    border-color: {ACCENT} !important;
+}}
+
+/* Tabs look like SaaS nav pills */
+button[data-baseweb="tab"] {{
+    border-radius: 999px !important;
+    padding: 10px 16px !important;
+    border: 1px solid {BORDER} !important;
+    background: transparent !important;
+}}
+button[data-baseweb="tab"][aria-selected="true"] {{
+    border: 1px solid rgba(96,165,250,0.55) !important;
 }}
 </style>
 """, unsafe_allow_html=True)
@@ -126,6 +164,7 @@ def load_data():
 
 df = load_data()
 
+# Drop Applicant_ID
 if "Applicant_ID" in df.columns:
     df = df.drop(columns=["Applicant_ID"])
 
@@ -137,22 +176,17 @@ for col in df.columns:
         df[col] = df[col].fillna(df[col].median())
 
 # ----------------------------
-# Target Cleaning (IMPORTANT FIX)
+# Target Normalization (No crash)
 # ----------------------------
-# Convert Loan_Approved into numeric (0/1) safely
 def normalize_target(series):
     s = series.astype(str).str.strip().str.lower()
-
     mapping = {
         "1": 1, "yes": 1, "y": 1, "approved": 1, "true": 1,
         "0": 0, "no": 0, "n": 0, "rejected": 0, "false": 0
     }
-
     return s.map(mapping)
 
 df["Loan_Approved_num"] = normalize_target(df["Loan_Approved"])
-
-# If still NaN after mapping, fallback:
 df["Loan_Approved_num"] = df["Loan_Approved_num"].fillna(0).astype(int)
 
 # Features and Target
@@ -179,6 +213,7 @@ pipeline = Pipeline(steps=[
 X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.2, random_state=42
 )
+
 pipeline.fit(X_train, y_train)
 acc = accuracy_score(y_test, pipeline.predict(X_test))
 
@@ -195,9 +230,31 @@ with topR:
     st.markdown("<div class='card-tight'>", unsafe_allow_html=True)
     a, b, c = st.columns(3)
     a.metric("Accuracy", f"{acc:.2f}")
-    b.metric("Rows", f"{len(df):,}")
+    b.metric("Rows", f"{len(df)/1000:.1f}K" if len(df) >= 1000 else f"{len(df):,}")
     c.metric("Features", f"{X.shape[1]}")
     st.markdown("</div>", unsafe_allow_html=True)
+
+st.markdown("")
+
+# ----------------------------
+# Hero Card (Premium SaaS feel)
+# ----------------------------
+st.markdown(f"""
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+    <div>
+      <div style="font-size:1.25rem; font-weight:800;">🚀 Instant Loan Decision Engine</div>
+      <div class="muted" style="margin-top:6px;">
+        Fill applicant details → get approval decision + probability in seconds.
+      </div>
+    </div>
+    <div style="text-align:right;">
+      <div class="muted" style="font-size:0.85rem;">System Status</div>
+      <div style="font-weight:800;">🟢 Online</div>
+    </div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
 st.markdown("---")
 
@@ -313,6 +370,7 @@ with tab1:
 
         snapshot = {
             "Applicant Income": Applicant_Income if submitted else "-",
+            "Coapplicant Income": Coapplicant_Income if submitted else "-",
             "Loan Amount": Loan_Amount if submitted else "-",
             "Loan Term": Loan_Term if submitted else "-",
             "DTI Ratio": DTI_Ratio if submitted else "-",
@@ -322,16 +380,22 @@ with tab1:
             "Property Area": Property_Area if submitted else "-",
         }
 
-        st.dataframe(
-            pd.DataFrame(snapshot.items(), columns=["Field", "Value"]),
-            use_container_width=True,
-            hide_index=True
-        )
+        # Premium snapshot list (instead of dataframe)
+        for k, v in snapshot.items():
+            st.markdown(
+                f"""
+                <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid {BORDER};">
+                    <div class="muted">{k}</div>
+                    <div style="font-weight:700;">{v}</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
 
         st.markdown("</div>", unsafe_allow_html=True)
 
 # ----------------------------
-# Insights Tab (NO CRASH)
+# Insights Tab
 # ----------------------------
 with tab2:
     st.markdown("### Insights")
@@ -345,8 +409,16 @@ with tab2:
     c3.metric("Avg Loan Amount", f"{df['Loan_Amount'].mean():.0f}")
 
     st.markdown("<hr/>", unsafe_allow_html=True)
-    st.markdown("#### Loan Approval Distribution")
-    st.bar_chart(df["Loan_Approved_num"].value_counts())
+
+    left, right = st.columns(2, gap="large")
+    with left:
+        st.markdown("#### Approval Distribution")
+        st.bar_chart(df["Loan_Approved_num"].value_counts())
+
+    with right:
+        st.markdown("#### Credit Score vs Loan Amount (sample)")
+        sample = df[["Credit_Score", "Loan_Amount"]].head(80)
+        st.line_chart(sample)
 
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -359,4 +431,4 @@ with tab3:
     st.dataframe(df.head(50), use_container_width=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-st.caption("© CreditWise • SaaS-ready UI • Light/Dark Mode • Streamlit Cloud")
+st.caption("© CreditWise • SaaS-ready UI • Light/Dark Theme • Streamlit Cloud")
