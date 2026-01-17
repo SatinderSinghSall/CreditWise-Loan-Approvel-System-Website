@@ -23,9 +23,19 @@ df = load_data()
 if "Applicant_ID" in df.columns:
     df = df.drop(columns=["Applicant_ID"])
 
+# ✅ FIX: Handle Missing Values (NaN)
+for col in df.columns:
+    if df[col].dtype == "object":
+        df[col] = df[col].fillna(df[col].mode()[0])
+    else:
+        df[col] = df[col].fillna(df[col].median())
+
 # Features & Target
 X = df.drop(columns=["Loan_Approved"])
 y = df["Loan_Approved"]
+
+# ✅ FIX: Ensure target has no NaN
+y = y.fillna(y.mode()[0])
 
 # Identify categorical & numeric columns
 cat_cols = X.select_dtypes(include=["object"]).columns.tolist()
