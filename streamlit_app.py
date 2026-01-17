@@ -1,90 +1,184 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 
-st.set_page_config(page_title="Loan Approval Dashboard", layout="wide")
+from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.impute import SimpleImputer
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, classification_report
+
+
+st.set_page_config(page_title="Loan Approval Predictor", layout="wide")
+
+DATA_PATH = "loan_approval_data.csv"
+TARGET_COL = "Loan_Approved"
+
 
 @st.cache_data
-def load_data():
-    return pd.read_csv("loan_approval_data.csv")
+def load_data(path: str) -> pd.DataFrame:
+    return pd.read_csv(path)
 
-df = load_data()
 
-st.title("🏦 Loan Approval Dashboard")
-st.caption("Basic Streamlit app for exploring the loan approval dataset")
+@st.cache_resource
+def train_model(df: pd.DataFrame):
+    # Basic cleaning
+    df = df.copy()
 
-# Sidebar filters
-st.sidebar.header("Filters")
+    if TARGET_COL not in df.columns:
+        raise ValueError(f"Target column '{TARGET_COL}' not found in dataset.")
 
-# Filter: Loan Approved
-if "Loan_Approved" in df.columns:
-    approval_options = ["All"] + sorted(df["Loan_Approved"].dropna().unique().tolist())
-    selected_approval = st.sidebar.selectbox("Loan Approved", approval_options)
+    # Split X/y
+    X = df.drop(columns=[TARGET_COL])
+    y = df[TARGET_COL].astype(str).str.strip()
 
-    if selected_approval != "All":
-        df = df[df["Loan_Approved"] == selected_approval]
+    # Identify numeric/categorical columns
+    numeric_cols = X.select_dtypes(include=["number"]).columns.tolist()
+    categorical_cols = [c for c in X.columns if c not in numeric_cols]
 
-# Filter: Employment Status
-if "Employment_Status" in df.columns:
-    emp_options = ["All"] + sorted(df["Employment_Status"].dropna().unique().tolist())
-    selected_emp = st.sidebar.selectbox("Employment Status", emp_options)
+    # Preprocessing
+    numeric_transformer = Pipeline(
+        steps=[
+            ("imputer", SimpleImputer(strategy="median")),
+            ("scaler", StandardScaler())
+        ]
+    )
 
-    if selected_emp != "All":
-        df = df[df["Employment_Status"] == selected_emp]
+    categorical_transformer = Pipeline(
+        steps=[
+            ("imputer", SimpleImputer(strategy="most_frequent")),
+            ("onehot", OneHotEncoder(handle_unknown="ignore"))
+        ]
+    )
 
-# Filter: Property Area
-if "Property_Area" in df.columns:
-    prop_options = ["All"] + sorted(df["Property_Area"].dropna().unique().tolist())
-    selected_prop = st.sidebar.selectbox("Property Area", prop_options)
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ("num", numeric_transformer, numeric_cols),
+            ("cat", categorical_transformer, categorical_cols),
+        ]
+    )
 
-    if selected_prop != "All":
-        df = df[df["Property_Area"] == selected_prop]
+    # Model
+    model = LogisticRegression(max_iter=2000)
 
-# Main layout
-tab1, tab2, tab3 = st.tabs(["📄 Data Preview", "📊 Summary", "📈 Charts"])
+    clf = Pipeline(
+        steps=[
+            ("preprocessor", preprocessor),
+            ("model", model)
+        ]
+    )
 
-with tab1:
-    st.subheader("Dataset Preview")
-    st.write(f"Rows: **{df.shape[0]}** | Columns: **{df.shape[1]}**")
-    st.dataframe(df, use_container_width=True)
+    # Train/test split
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y,
+        test_size=0.2,
+        random_state=42,
+        stratify=y if y.nunique() > 1 else None
+    )
 
-with tab2:
-    st.subheader("Summary Statistics")
+    clf.fit(X_train, y_train)
 
-    col1, col2 = st.columns(2)
+    # Evaluate
+    y_pred = clf.predict(X_test)
+    acc = accuracy_score(y_test, y_pred)
 
-    with col1:
-        st.markdown("### Numeric Summary")
-        numeric_df = df.select_dtypes(include=["number"])
-        if not numeric_df.empty:
-            st.dataframe(numeric_df.describe().T, use_container_width=True)
+    return clf, acc, numeric_cols, categorical_cols, X
+
+
+def build_input_form(X_template: pd.DataFrame, numeric_cols, categorical_cols):
+    """
+    Creates Streamlit inputs for ALL fields.
+    Returns a 1-row DataFrame matching training columns.
+    """
+    st.subheader("🧾 Enter Applicant Details (All Fields)")
+
+    user_data = {}
+
+    # Use columns in same order as training
+    cols = X_template.columns.tolist()
+
+    # Split into 2 columns layout for nicer UI
+    left, right = st.columns(2)
+
+    for i, col in enumerate(cols):
+        container = left if i % 2 == 0 else right
+
+        with container:
+            if col in numeric_cols:
+                # Use min/max from dataset to make slider sensible
+                col_series = X_template[col]
+                col_min = float(np.nanmin(col_series.values)) if col_series.notna().any() else 0.0
+                col_max = float(np.nanmax(col_series.values)) if col_series.notna().any() else 100.0
+                col_median = float(np.nanmedian(col_series.values)) if col_series.notna().any() else 0.0
+
+                # If range is huge, use number_input instead of slider
+                if (col_max - col_min) > 10000:
+                    user_data[col] = st.number_input(
+                        f"{col}",
+                        value=float(col_median),
+                        step=1.0
+                    )
+                else:
+                    user_data[col] = st.slider(
+                        f"{col}",
+                        min_value=float(col_min),
+                        max_value=float(col_max),
+                        value=float(col_median)
+                    )
+            else:
+                # categorical
+                options = sorted(X_template[col].dropna().astype(str).unique().tolist())
+                if len(options) == 0:
+                    options = ["Unknown"]
+
+                user_data[col] = st.selectbox(f"{col}", options)
+
+    return pd.DataFrame([user_data], columns=cols)
+
+
+# ----------------------------
+# APP
+# ----------------------------
+st.title("🏦 Loan Approval Prediction App")
+st.caption("This app trains a model using ALL input fields in loan_approval_data.csv")
+
+df = load_data(DATA_PATH)
+
+with st.expander("📄 Dataset Preview", expanded=False):
+    st.write(f"Shape: {df.shape[0]} rows × {df.shape[1]} cols")
+    st.dataframe(df.head(20), use_container_width=True)
+
+# Train model
+clf, acc, numeric_cols, categorical_cols, X_template = train_model(df)
+
+st.success(f"✅ Model trained successfully | Test Accuracy: **{acc:.2%}**")
+
+# Build input form (all fields)
+input_df = build_input_form(X_template, numeric_cols, categorical_cols)
+
+st.divider()
+
+# Predict
+if st.button("🔮 Predict Loan Approval", type="primary"):
+    pred = clf.predict(input_df)[0]
+
+    # Try to show probability for "Yes" if available
+    proba_text = ""
+    if hasattr(clf, "predict_proba"):
+        probs = clf.predict_proba(input_df)[0]
+        classes = clf.named_steps["model"].classes_
+        if "Yes" in classes:
+            yes_index = list(classes).index("Yes")
+            proba_text = f" | Probability(Yes): **{probs[yes_index]:.2%}**"
         else:
-            st.info("No numeric columns found.")
+            proba_text = f" | Probabilities: {dict(zip(classes, probs.round(3)))}"
 
-    with col2:
-        st.markdown("### Missing Values")
-        missing = df.isna().sum().sort_values(ascending=False)
-        missing = missing[missing > 0]
-        if len(missing) > 0:
-            st.dataframe(missing.to_frame("Missing Count"), use_container_width=True)
-        else:
-            st.success("No missing values 🎉")
+    if str(pred).strip().lower() == "yes":
+        st.success(f"🎉 Prediction: **{pred}**{proba_text}")
+    else:
+        st.error(f"⚠️ Prediction: **{pred}**{proba_text}")
 
-with tab3:
-    st.subheader("Charts")
-
-    # Loan approval distribution
-    if "Loan_Approved" in df.columns:
-        st.markdown("### Loan Approval Distribution")
-        approval_counts = df["Loan_Approved"].value_counts(dropna=False)
-        st.bar_chart(approval_counts)
-
-    # Credit Score vs Loan Approved (simple group mean)
-    if "Credit_Score" in df.columns and "Loan_Approved" in df.columns:
-        st.markdown("### Avg Credit Score by Loan Approval")
-        grouped = df.groupby("Loan_Approved")["Credit_Score"].mean().sort_values(ascending=False)
-        st.bar_chart(grouped)
-
-    # Loan Amount distribution
-    if "Loan_Amount" in df.columns:
-        st.markdown("### Loan Amount Histogram")
-        st.bar_chart(df["Loan_Amount"].dropna().value_counts().head(30))
+    with st.expander("🔍 Your Input Data (1 row)"):
+        st.dataframe(input_df, use_container_width=True)
